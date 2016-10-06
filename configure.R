@@ -1,0 +1,2 @@
+RNA_MIN_FC = 2
+RNA_MIN_ADJP = 0.05
