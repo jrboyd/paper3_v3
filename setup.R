@@ -19,6 +19,13 @@ np2granges = function(np, top = NA){
   GRanges(seqnames = np[,1], ranges = IRanges(start = np[,2], end = np[,3]), enrichment = np[,7], adj_p = np[,9])
 }
 
+file2granges = function(file, min_adjp = 0){
+  np = read.table(file)
+  gr = np2granges(np)
+  k = gr$adj_p > min_adjp
+  return(gr[k])
+}
+
 venn_peaks = function(gr_pairList){
   if(length(gr_pairList) != 2) stop("length must be 2")
   a = gr_pairList[[1]]

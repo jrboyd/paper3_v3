@@ -51,8 +51,8 @@ venn_peaks = function(gr_pairList){
 write_beds = function(gr_pairList){
   gr_venn = venn_peaks(gr_pairList)
   gr_venn_randbed = lapply(gr_venn, function(x){
-    o = order(runif(length(x)))
-    x = x[o][1:10000]
+    # o = order(runif(length(x)))
+    # x = x[o][1:10000]
     as_bed = as.data.frame(x)[,1:3]
     as_bed = cbind(as_bed, paste("rand", 1:nrow(as_bed), sep = "_"), rep(0, nrow(as_bed)), rep(".", nrow(as_bed)))
     colnames(as_bed) = NULL
@@ -75,9 +75,15 @@ write_beds = function(gr_pairList){
   })
 }
 
-write_beds(list(MCF7_ctrl_ESR1 = ESR1_ctrl_gr_all, MCF7_e2_ESR1 = ESR1_e2_gr_all))
-write_beds(k4me1_gr)
-write_beds(k27ac_gr[c(2,3)])
+ctrl_vp = venn_peaks(gr_pairList = list(H3K4me1 = k4me1_gr$MCF7_ctrl_H3K4ME1, H3K27ac = k27ac_gr$))
+any_k4me1 = reduce(c(k4me1_gr$MCF7_ctrl_H3K4ME1, k4me1_gr$MCF7_e2_H3K4ME1))
+any_k27ac = reduce(c(k27ac_gr$MCF7_ctrl_H3K27AC, k27ac_gr$MCF7_e2_H3K27AC))
+any_vp = venn_peaks(gr_pairList = list(H3K4me1 = any_k4me1, H3K27ac = any_k27ac))
+
+
+write_beds(gr_pairList = list(K4me1 = any_k4me1, K27ac = any_k27ac))
+# write_beds(k4me1_gr)
+# write_beds(k27ac_gr[c(2,3)])
 
 a = out$`MCF7_ctrl_H3K4ME1 with MCF7_e2_H3K4ME1`
 b = out$`MCF7_e2_H3K4ME1 with MCF7_ctrl_H3K4ME1`
