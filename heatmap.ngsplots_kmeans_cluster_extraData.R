@@ -1,4 +1,7 @@
 #clustering is kmeans then sorted within clusters
+#v2 adds 2 clustering modes and keep by profile as default
+#extra uses supplied extra_data
+#manual uses supplied cluster_members list
 source("functions_movingAverage.R")
 #source('heatmap.2.2.R')
 library('png')
@@ -27,36 +30,41 @@ stopRasterMode = function(mai = NA){
               interpolate = FALSE)
 }
 
-heatmap.ngsplots = function(ngs_profiles, 
-                            main_title = NULL, 
-                            lmat_custom = NULL,
-                            profiles_to_plot = NA, 
-                            profile_colors = NA,
-                            side_plots = list(),#should be list of index array for side plots, if not list, will not be plotted.
-                            nclust = 6, 
-                            labels_below = NA, 
-                            labels_above = NA, 
-                            fg_toPlot = character(), 
-                            labels_right = NA, 
-                            sortClustersByTotal = F,
-                            clusterWeights = NULL,
-                            hmapColors = c('royalblue1', 'black', 'yellow'), 
-                            labelWithCounts = F, 
-                            fg_label = NA, 
-                            label_clusters = T,
-                            key.lab = 'log2 FE',
-                            key.cex = 1.3,
-                            cex.main = 2.5,
-                            cex.row = 1.3,
-                            cex.col = 2,
-                            doSidePlot = T,
-                            sidePlot_smoothing = 1,
-                            extraData = NULL,
-                            extraData_colors = NULL,
-                            extraData_plotFunction = NA,
-                            dashed_line_positions = .5,
-                            forPDF = T,
-                            globalScale = 1){
+heatmap.ngsplots_extraData2 = function(ngs_profiles, 
+                                       main_title = NULL, 
+                                       lmat_custom = NULL,
+                                       show_layout = F,
+                                       profiles_to_plot = NA, 
+                                       profile_colors = NA,
+                                       side_plots = list(),#should be list of index array for side plots, if not list, will not be plotted.
+                                       sideplot_lwd = 2.5,
+                                       sidePlotSize = 1,
+                                       nclust = 6, 
+                                       labels_below = NA, 
+                                       labels_above = NA, 
+                                       fg_toPlot = character(), 
+                                       labels_right = NA, 
+                                       sortClustersByTotal = F,
+                                       clusterWeights = NULL,
+                                       hmapColors = c('royalblue1', 'black', 'yellow'), 
+                                       labelWithCounts = F, 
+                                       fg_label = NA, 
+                                       label_clusters = T,
+                                       key.lab = 'log2 FE',
+                                       key.cex = 1.3,
+                                       cex.main = 2.5,
+                                       cex.row = 1.3,
+                                       cex.col = 2,
+                                       doSidePlot = T,
+                                       sidePlot_smoothing = 1,
+                                       cluster_type = c("profile", "extra", "manual"),
+                                       manual_cluster_members = NULL,
+                                       extraData = NULL,
+                                       extraData_colors = NULL,
+                                       extraData_plotFunction = NA,
+                                       dashed_line_positions = .5,
+                                       forPDF = T,
+                                       globalScale = 1){
   if(length(profiles_to_plot) == 1 && is.na(profiles_to_plot)){
     profiles_to_plot = names(ngs_profiles)
   }
@@ -76,12 +84,6 @@ heatmap.ngsplots = function(ngs_profiles,
   if(length(side_plots) == 0){#if empty list (default), all profiles go in single side plot
     side_plots = list(1:length(profiles_to_plot))
   }
-  if(length(unique(sapply(ngs_profiles, ncol))) != 1) stop("all ngs_profiles must have same ncol")
-  #clusterWeights must be same length as each profile being plotted or total length of profiles
-  if(!is.null(clusterWeights)  && 
-     length(clusterWeights) != ncol(ngs_profiles[[1]]) &&
-      (length(clusterWeights) != ncol(ngs_profiles[[1]])*length(ngs_profiles))) stop("clusterWeight must be same length as ncol of profiles")
-    
   
   prof = matrix(0, ncol = 0, nrow = nrow(ngs_profiles[[1]]))#assemble single matrix by joining selected profiles (matrices)
   hidden = lapply(profiles_to_plot, function(x){
@@ -120,7 +122,28 @@ heatmap.ngsplots = function(ngs_profiles,
     profile_coefficient = rep(clusterWeights, length(ngs_profiles))
     clust_prof = t(apply(clust_prof, 1, function(x)x*clusterWeights))
   }
-  kmclust = kmeans(clust_prof, centers = nclust, iter.max = 10)
+  if(cluster_type == "profile"){
+    kmclust = kmeans(clust_prof, centers = nclust, iter.max = 10)
+  }else if(cluster_type == "extra"){
+    kmclust = kmeans(extraData - extraData[,1], centers = nclust, iter.max = 10)  
+  }else if(cluster_type == "manual"){
+    if(is.null(manual_cluster_members)){
+      stop("must set manual_cluster_members if cluster_type is manual")
+    }
+    nclust = length(manual_cluster_members)
+    kmclust = list()
+    kmclust$size = sapply(manual_cluster_members, length)
+    kmclust$cluster =  unlist(lapply(1:nclust, function(x)rep(x, kmclust$size[x])))
+    names(kmclust$cluster) = unlist(manual_cluster_members)
+    kmclust$centers = t(sapply(manual_cluster_members, function(x){
+      colMeans(clust_prof[x,])
+    }))
+    rownames(kmclust$centers) = 1:nclust
+  }else{
+    stop(paste("invalid cluster type", cluster_type))
+  }
+  
+  
   
   
   
@@ -134,7 +157,7 @@ heatmap.ngsplots = function(ngs_profiles,
     kmclust$size = sapply(1:nclust, function(x){
       return(sum(kmclust$cluster == x))
     })
-    kmclust$centers = rbind(colMeans(prof[fg_toPlot,]), kmclust$centers)
+    kmclust$centers = rbind(colMeans(extraData[fg_toPlot,]), kmclust$centers)
     rownames(kmclust$centers) = 1:nclust
   }
   
@@ -223,16 +246,6 @@ heatmap.ngsplots = function(ngs_profiles,
     kmclust = replace_clust(kmclust, i, dat)
   }
   
-  prof_ordered = matrix(0, ncol = ncol(prof), nrow = 0)#prof_ordered contains profiles rearranged at cluster level
-  get_kmclust = function(i){
-    start = 1
-    if(i > 1){
-      start = sum(kmclust$size[1:(i-1)]) + 1
-    }
-    end = sum(kmclust$size[1:(i)])
-    return(prof[start:end,,drop = F])
-  }
-  
   kmclust_order = 1:nclust
   if(length(fg_toPlot) > 0){
     sortByDist = F
@@ -264,20 +277,21 @@ heatmap.ngsplots = function(ngs_profiles,
     rColorChoices = c('white', rColorChoices[2:length(rColorChoices)-1])
   }
   
-  
-  for(i in 1:length(kmclust_order)){#sort k means clusters 
-    tomove = kmclust_order[i]
-    dest = i
-    kmclust = move_clust(kmclust, tomove, dest)
-    kmclust_order = ifelse(kmclust_order <= i, kmclust_order + 1, kmclust_order)#position of clusters less than i must be increased by 1
-    kmclust_order[1:i] = 1:i#up to i is sorted
-    #     
-    #     
-    #     new_cluster = get_kmclust(kmclust_order[i])
-    #     prof_ordered = rbind(prof_ordered, new_cluster)
-    #     
-    #     cluster_color = rColorChoices[i]
-    #     rColors = c(rColors, rep(cluster_color, nrow(new_cluster)))
+  if(cluster_type != "manual"){
+    for(i in 1:length(kmclust_order)){#sort k means clusters 
+      tomove = kmclust_order[i]
+      dest = i
+      kmclust = move_clust(kmclust, tomove, dest)
+      kmclust_order = ifelse(kmclust_order <= i, kmclust_order + 1, kmclust_order)#position of clusters less than i must be increased by 1
+      kmclust_order[1:i] = 1:i#up to i is sorted
+      #     
+      #     
+      #     new_cluster = get_kmclust(kmclust_order[i])
+      #     prof_ordered = rbind(prof_ordered, new_cluster)
+      #     
+      #     cluster_color = rColorChoices[i]
+      #     rColors = c(rColors, rep(cluster_color, nrow(new_cluster)))
+    }
   }
   rColors = rColorChoices[kmclust$cluster]
   names(rColors) = rownames(kmclust$data)
@@ -329,9 +343,8 @@ heatmap.ngsplots = function(ngs_profiles,
   if(length(fg_toPlot) > 0){
     extra_spacer = 2
   }
-  final_prof = prof[rownames(kmclust$data),]
   args = list(
-    x = final_prof,key.lab = key.lab, key.cex = key.cex, 
+    x = prof[rownames(kmclust$data),], key.lab = key.lab, key.cex = key.cex, 
     RowSideLabels = RowSideLabels,
     RowSideColors = rColors,
     labels.below = labels.below, cexRow = cex.row, cexCol = cex.col, col = colors, 
@@ -345,7 +358,14 @@ heatmap.ngsplots = function(ngs_profiles,
     labels_rowsep = c(labels_right[1], rep('', extra_spacer), labels_right[2:length(labels_right)]), 
     main = main_title, cex.main = cex.main
   )
-  
+  new_centers = matrix(0, nrow = nrow(kmclust$centers), ncol = ncol(prof))
+  for(i in unique(kmclust$cluster)){
+    keep = kmclust$cluster == i
+    rnames = rownames(kmclust$data)[keep]
+    new_centers[i,] = colMeans(prof[rnames,])
+  }
+  kmclust$centers = new_centers
+  kmclust <<- kmclust
   hidden = heatmap.2.2(args$x, key.lab = args$key.lab, args$key.cex, #key.par = list(mai = c(.5,0,0,0)),
                        clust = kmclust, globalScale = globalScale, forPDF = forPDF,
                        RowSideLabels = args$RowSideLabels,
@@ -364,69 +384,14 @@ heatmap.ngsplots = function(ngs_profiles,
                        cex.main = args$cex.main,
                        doSidePlot = doSidePlot, 
                        side_plots = side_plots, 
+                       sideplot_lwd = sideplot_lwd,
+                       sidePlotSize = sidePlotSize,
                        side_plot_colors = profile_colors,
                        sidePlot_smoothing = sidePlot_smoothing,
                        extraData = extraData,
                        extraData_plotFunction = extraData_plotFunction,
                        lmat_custom = lmat_custom, 
-                       extraData_colors = extraData_colors)
-  cluster_members = sapply(1:kmclust$nclust, function(x){
-    return(rownames(kmclust$data)[kmclust$cluster == x])
-  }) 
-  ngs_res = list(class_sizes = sapply(cluster_members, length), cluster_members = cluster_members, colors = unique(rColors), as_plotted = kmclust$data, kmclust = kmclust, args = args)
-  return(ngs_res)
-}
-
-heatmap.replot_ngsplots = function(ngs_profiles, hmap_res, labels_above, labels_below){
-  
-  args = hmap_res$args
-  
-  prof = matrix(0, ncol = 0, nrow = nrow(ngs_profiles[[1]]))#assemble single matrix by joining selected profiles (matrices)
-  hidden = lapply(ngs_profiles, function(x){
-    prof <<- cbind(prof, x)
-  })
-  
-  len = length(ngs_profiles)
-  
-  cseps = 1:(len-1) * ncol(prof) / len #column separators are between joined profiles
-  
-  labels.above = rep('', ncol(prof))#column labels are centered above each profile
-  if(!is.na(labels_above[1])){
-    labels_loc = round((1:length(labels_above) -.499) * ncol(prof) / length(labels_above))
-    labels.above[labels_loc] = labels_above
-  }
-  
-  
-  labels.below = rep('', ncol(prof))
-  labels_loc = round((1:length(labels_below)-.499) * ncol(prof) / length(labels_below))
-  labels.below[labels_loc] = labels_below
-  
-  prof = prof[rownames(args$x),]
-  
-  
-  hidden = heatmap.2.2(x = prof, key.lab = args$key.lab, key.cex = args$key.cex, #key.par = list(mai = c(.5,0,0,0)),
-                       clust = kmclust, globalScale = globalScale, forPDF = forPDF,
-                       RowSideLabels = args$RowSideLabels,
-                       RowSideColors = args$RowSideColors,
-                       labels.below = labels.below,
-                       labels.above = labels.above,
-                       cexRow = args$cexRow,
-                       cexCol = args$cexCol,
-                       col = args$col, 
-                       rowsep.major = args$rowsep.major, 
-                       colsep.minor = cseps, 
-                       sepwidth.minor = args$sepwidth.minor, 
-                       sepwidth.major = args$sepwidth.major, 
-                       
-                       na.color = args$na.color, 
-                       labels_rowsep = args$labels_rowsep, 
-                       main = args$main,
-                       cex.main = args$cex.main,
-                       extraData_plotFunction = extraData_plotFunction,
-                       doSidePlot = doSidePlot,
-                       sidePlot_smoothing = sidePlot_smoothing,
-                       extraData = extraData,
-                       lmat_custom = lmat_custom,
+                       show_layout = show_layout,
                        extraData_colors = extraData_colors)
   cluster_members = sapply(1:kmclust$nclust, function(x){
     return(rownames(kmclust$data)[kmclust$cluster == x])
@@ -441,6 +406,7 @@ heatmap.2.2 = function (x,
                         clust,
                         col, 
                         lmat_custom = NULL,
+                        show_layout = F,
                         globalScale = 1,
                         forPDF = T,
                         #dividing up the plot
@@ -451,7 +417,8 @@ heatmap.2.2 = function (x,
                         sepwidth.minor = .01, 
                         sepwidth.major = .05, 
                         na.color = par("bg"), 
-                        
+                        sidePlotSize = 1,
+                        sideplot_lwd = 2.5,
                         #color and label for clusters
                         RowSideLabels = NA,
                         RowSideColors = NULL, 
@@ -517,7 +484,7 @@ heatmap.2.2 = function (x,
   main.height = .8
   extraDataSize = 1
   divLinesSize = .3
-  sidePlotSize = 1
+  
   labRowSize = 1
   
   add_lmat_left = function(added_width){
@@ -615,9 +582,17 @@ heatmap.2.2 = function (x,
   #print(lmat)
   #print(lhei)
   #print(lwid)
+  if(show_layout){
+    print(lmat)
+    print(lhei)
+    print(lwid)
+  } 
+  
   nf = layout(lmat, heights = lhei, widths = lwid)
   
-  #layout.show(nf)
+  if(show_layout){
+    layout.show(nf)
+  } 
   
   breaks <- length(col) + 1
   symbreaks = any(x < 0, na.rm = TRUE)
@@ -913,7 +888,7 @@ heatmap.2.2 = function (x,
             end = s * win
             xs = 1:(ncol(avgA)/nsplits)#first half of profile
             if(sidePlot_smoothing < 2){
-              lines(xs, vals[start:end], type="l", lwd=2.5,
+              lines(xs, vals[start:end], type="l", lwd= sideplot_lwd,
                     lty=1, col=prof_colors[s], pch=16) 
             }else{
               lines(xs, movingAverage(vals[start:end], n = sidePlot_smoothing, centered = T), type="l", lwd=2.5,
@@ -994,7 +969,7 @@ heatmap.2.2 = function (x,
 do_example = F
 if(do_example){
   
-  nr = 1000
+  nr = 100
   nc = 50
   nmods = 2
   nlines = 3
@@ -1032,7 +1007,7 @@ if(do_example){
   }
   names(prof_normed) = prof_names
   # pdf('compound_plots.pdf', width = 10, height = 8)
-  nclust = 6
+  nclust = 2
   lmat_nr = 3 + nclust
   lmat_nc = 11
   lmat_custom = matrix(0, ncol = lmat_nc, nrow = lmat_nr)
@@ -1044,9 +1019,9 @@ if(do_example){
   main_title = 'simulated data'
   profile_colors = rep(RColorBrewer::brewer.pal(2, 'Set1')[1:2],3)
   profile_colors[6] = 'yellow'
-  res = heatmap.ngsplots(ngs_profiles = prof_normed, nclust = nclust, extraData = extraData,
-                         profile_colors = profile_colors,side_plots = list(1:2,3:4, 5:6), labels_below = rep(cell_lines,2), 
-                         labels_above = histone_mods, lmat_custom = lmat_custom, labelWithCounts = T, labels_right = 'g')
+  res = heatmap.ngsplots_extraData(ngs_profiles = prof_normed, nclust = nclust, extraData = extraData,
+                                   profile_colors = profile_colors,side_plots = list(1:2,3:4, 5:6), labels_below = rep(cell_lines,2), 
+                                   labels_above = histone_mods, lmat_custom = lmat_custom, labelWithCounts = T, labels_right = 'g')
   plot0();text(.5,.5, 'average profile')
   plot0();text(.5,.5, 'log gene expression')
   plot0();legend('center', legend = cell_lines, fill = RColorBrewer::brewer.pal(3, 'Set1'), horiz = T, bty = 'n')

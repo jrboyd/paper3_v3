@@ -15,7 +15,7 @@ get_type = function(str){
 
 df2sheet = function(df, sheetName, wb){
   mat = as.matrix(df)
-  if(nrow(mat) > 100) mat = mat[1:100,]
+  # if(nrow(mat) > 1000) mat = mat[1:1000,]
   sheet = createSheet(wb = wb, sheetName = sheetName)
   
   for(i in 1:ncol(mat)){
@@ -50,6 +50,11 @@ df2sheet = function(df, sheetName, wb){
 }
 
 wrap_great = function(subject38, query38, subject_name, query_name, with = T){
+  #assumed alignment to hg38, will be internally converted to hg19.  output is hg38.
+  #subject will be used as background.
+  #forground are those features in subject that are bound/not bound by query.
+  #with indecates bound, !with indicates not bound.
+  #names are important for interpretable output.
   index = 1
   if(!with) index = 2
   
@@ -62,8 +67,10 @@ wrap_great = function(subject38, query38, subject_name, query_name, with = T){
   subject19 = unlist(liftOver(subject38, ch))
   query19 = unlist(liftOver(query38, ch))
   
+  #reduce merges overlapping feature.  
+  #liftOVer can create overlaps even if there were none previously
+  #overlapping features will cause rGREAT to mishandle GREAT query and fail.
   subject19  = reduce(subject19)
-  
   query19  = reduce(query19)
   
   venn_in = list(subject19,  query19)
@@ -75,14 +82,22 @@ wrap_great = function(subject38, query38, subject_name, query_name, with = T){
   bg19 = subject19
   
   job = submitGreatJob(gr = fg19, bg = bg19, bgChoice = "data",  species = "hg19", version = "3.0.0", request_interval = 30)
-  wb = createWorkbook()
+  wb = xlsx::createWorkbook()
   
   for(cat in rGREAT::availableCategories(job)){
     if(cat == "Gene Expression") next #Gene Expression doesn't work
+    if(cat != "GO" & cat != "Phenotype Data and Human Disease") next
+    print(paste("->", cat))
     tables = getEnrichmentTables(job, category = cat)
-    for(tab_name in names(tables)){
-      print(tab_name)
+    for(tab_name in names(tables)){#2 and 7 are biological process GO and oncongenic signatures
+      if(!(tab_name == "MSigDB Oncogenic Signatures" | tab_name == "GO Biological Process")) next
+      print(paste("  ", tab_name))
       mat = tables[[tab_name]]
+      # keep = mat[,12] < .05 #12 is pvalue
+      # mat = mat[keep,]
+      o = order(mat[,12], decreasing = F)
+      mat = mat[o,]
+      mat = mat[,c(1,12,6,2:5,7:11)]
       df2sheet(df = mat, sheetName = tab_name, wb = wb)
     }
   }

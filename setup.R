@@ -19,6 +19,10 @@ np2granges = function(np, top = NA){
   GRanges(seqnames = np[,1], ranges = IRanges(start = np[,2], end = np[,3]), enrichment = np[,7], adj_p = np[,9])
 }
 
+bed2granges = function(bed){
+  GRanges(seqnames = bed[,1], ranges = IRanges(start = bed[,2], end = bed[,3]), id = bed[,4], score = bed[,5], strand = bed[,6])
+}
+
 file2granges = function(file, min_adjp = 0){
   np = read.table(file)
   gr = np2granges(np)
@@ -52,4 +56,15 @@ venn_peaks = function(gr_pairList){
     paste(b_name, "no", a_name)
   )
   return(out)
+}
+
+extend_from_middle = function(gr, ext){
+  starts = start(gr)
+  widths = width(gr)
+  mids = as.integer(starts + widths / 2)
+  new_starts = mids - ext
+  new_ends = mids + ext
+  start(gr) = new_starts
+  end(gr) = new_ends
+  return(gr)
 }

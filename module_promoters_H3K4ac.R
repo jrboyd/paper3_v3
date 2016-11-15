@@ -1,3 +1,6 @@
+#of all transcripts, determine +/- 1kb promoters from tss.
+#intersect with h3k4ac, select one promoter per gene id 
+#consolidate across by samples
 setwd(input_dir)
 load("ref/enst_ref.save")
 enst_ref$transcript_id = rownames(enst_ref)
