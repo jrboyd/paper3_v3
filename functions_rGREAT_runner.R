@@ -1,11 +1,19 @@
-library(magrittr)
-library(openxlsx)
-library(xlsx)
-source("setup.R")
-source("module_STEIN_ChIPseq.R")
-source("module_enhancers_Carroll.R")
-source("functions_rGREAT.R")
-source("functions_replot_GREAT_matrix.R")
+if(!exists("rGREAT_ready")) rGREAT_ready = F
+if(!rGREAT_ready){
+  library(magrittr)
+  library(openxlsx)
+  library(xlsx)
+  source("setup.R")
+  source("module_STEIN_ChIPseq.R")
+  source("module_enhancers_Carroll.R")
+  source("functions_rGREAT.R")
+  source("functions_replot_GREAT_matrix.R")
+  setwd(input_dir)
+  k4me3_promoters = read.table("STEIN_k4me3_promoters_4ngsplot.bed") %>% bed2granges()
+  k4ac_promoters = read.table("STEIN_k4ac_promoters_4ngsplot.bed") %>% bed2granges()
+  setwd(wd)
+  rGREAT_ready = T
+}
 
 #for all marks and cells, compare base_drug to treat_drug and inverse.  
 #perform a GREAT analysis for each with unique compared to union of peaks
@@ -45,9 +53,9 @@ run_rGREAT = function(parent_dir, marks, cells, base_drug, treat_drug,
       try(detach("package:openxlsx", unload = T), silent = T)
       library(xlsx)
       #compare a to b, then b to a      
-      base_comparison_results = compare_drugs(base_drug, treat_drug, with = F, 
+      base_comparison_results = compare_drugs(grs = STEIN_SUBSET, base_drug, treat_drug, with = F, 
                                               enh_only = filter_to_enhancers, prom_only = filter_to_promoters, esr1_only = filter_to_esr1)
-      treat_comparison_results = compare_drugs(treat_drug, base_drug, with = F, 
+      treat_comparison_results = compare_drugs(grs = STEIN_SUBSET, treat_drug, base_drug, with = F, 
                                                enh_only = filter_to_enhancers, prom_only = filter_to_promoters, esr1_only = filter_to_esr1)
       
       #save gene region associations to xlsx
@@ -59,7 +67,7 @@ run_rGREAT = function(parent_dir, marks, cells, base_drug, treat_drug,
         as.data.frame()
       
       wb = createWorkbook()
-      wb_name = paste(base_drug, "and", treat_drug, "gene regions.xlsx", sep = "_")
+      wb_name = paste("gene_regions", base_drug, "and", treat_drug, "combined.xlsx", sep = "_")
       if(filter_to_promoters) wb_name = paste0("prom-", wb_name)
       if(filter_to_enhancers) wb_name = paste0("end-", wb_name)
       if(filter_to_esr1) wb_name = paste0("ESR1-", wb_name)
@@ -87,11 +95,11 @@ get_res = function(res = bdgdiff_res, cell = "", mark = "", from = "", to = "", 
   return(res[keep])
 }
 
-compare_drugs = function(subject, query, with = T, esr1_only = F, enh_only = F, prom_only = F){
-  tmp = get_res(STEIN_SUBSET, from = subject)
+compare_drugs = function(grs, subject, query, with = T, esr1_only = F, enh_only = F, prom_only = F){
+  tmp = get_res(grs, from = subject)
   if(length(tmp) != 1) stop("bad subject match")
   subject_gr = tmp[[1]]
-  tmp = get_res(STEIN_SUBSET, from = query)
+  tmp = get_res(grs, from = query)
   if(length(tmp) != 1) stop("bad query match")
   query_gr = tmp[[1]]
   is_cov = GRanges(coverage(GRangesList(subject_gr, query_gr)) > 0)
